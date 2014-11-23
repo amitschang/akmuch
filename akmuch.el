@@ -34,6 +34,7 @@
 	(define-key map (kbd "u") 'akmuch-unread)
 	(define-key map (kbd "r") 'akmuch-reply)
 	(define-key map (kbd "R") 'akmuch-reply-sender)
+	(define-key map (kbd "f") 'akmuch-forward)
 	(define-key map (kbd "d") 'akmuch-delete)
 	(define-key map (kbd "t") 'akmuch-tag)
 	(define-key map (kbd "l") 'akmuch-thread-list)
@@ -44,22 +45,50 @@
 (defun akmuch-format-search-result ()
   (let (sstart)
     (goto-char (point-at-bol))
-    (forward-char 43)
+    (forward-char 41)
+    (search-forward-regexp " ")
     (insert "[")
     (search-forward-regexp ";")
     (delete-char -1)
-    (unless (> (- (point) (point-at-bol)) 65)
-      (insert (make-string (- 65 (- (point) (point-at-bol))) 32)))
-    (insert "]")
-    (setq sstart (point))
+    (while (> (current-column) 65)
+      (delete-char -1))
+    (while (< (current-column) 65)
+      (insert " "))
+    (insert "] --- ")
     (goto-char (point-at-eol))
     (search-backward-regexp " (")
-    (if (< (- (point) sstart) akmuch-subject-display-length)
-	(insert (make-string (- akmuch-subject-display-length
-				(- (point) sstart)) 32))
-      (put-text-property (+ sstart akmuch-subject-display-length)
-			 (point)
-			 'invisible t))))
+    (while (> (current-column) (+ 65 akmuch-subject-display-length))
+      (delete-char -1))
+    (while (< (current-column) (+ 65 akmuch-subject-display-length))
+      (insert " "))
+    (save-excursion
+    (when (search-forward-regexp "*" (point-at-eol) t)
+      (delete-char -1)
+      (move-to-column 24)
+      (delete-char 1)
+      (insert "*"))
+    (when (search-forward-regexp "attachment" (point-at-eol) t)
+      (delete-char -10)
+      (move-to-column 69)
+      (delete-char 1)
+      (insert "&"))
+    (when (search-forward-regexp "replied" (point-at-eol) t)
+      (delete-char -7)
+      (move-to-column 68)
+      (delete-char 1)
+      (insert "R"))
+    (when (search-forward-regexp "unread" (point-at-eol) t)
+      (delete-char -6)
+      (move-to-column 67)
+      (delete-char 1)
+      (insert "U")))
+    (when (re-search-forward "( *" (point-at-eol) t)
+      (replace-match "(" nil nil))
+    (when (re-search-forward "\\(  *\\)[^)]" (point-at-eol) t)
+      (replace-match " " nil nil nil 1))
+    (when (re-search-forward " *)" (point-at-eol) t)
+      (replace-match ")" nil nil))
+    ))
 
 (defun akmuch-fontify-search-result (bold)
   (let (sstart)
@@ -67,45 +96,46 @@
     (set-text-properties (point-at-bol) (point-at-eol) nil)
     (search-forward-regexp " ")
     (put-text-property (point-at-bol) (- (point) 1) 'invisible t)
+    (when (looking-at "*")
+      (put-text-property (point) (+ 1 (point)) 'face 'font-lock-warning-face))
     (search-forward-regexp "\\] \\[")
-    (put-text-property (point)
-		       (progn (search-forward-regexp "]")
-			      (- (point) 1))
-		       'face 'font-lock-keyword-face)
-    (forward-char -1)
-    (if (> (- (point) (point-at-bol)) 65)
-	(put-text-property (+ (point-at-bol) 65) (point) 'invisible t))
-    (setq sstart (point))
+    (put-text-property
+     (point)
+     (progn (search-forward-regexp "]")
+	    (- (point) 1))
+     'face 'font-lock-keyword-face)
+    (forward-char 1)
+    (when (looking-at "U")
+      (put-text-property (point) (+ 1 (point)) 'face 'font-lock-warning-face))
+    (forward-char 1)
+    (when (looking-at "R")
+      (put-text-property (point) (+ 1 (point)) 'face 'font-lock-string-face))
     (goto-char (point-at-eol))
     (search-backward-regexp " (")
-    (put-text-property (point) (point-at-eol) 'face 'font-lock-comment-face)
-    (if (> (- (point) sstart) akmuch-subject-display-length)
-	(put-text-property (+ sstart akmuch-subject-display-length)
-			   (point)
-			   'invisible t))))
+    (put-text-property (point) (point-at-eol) 'face 'font-lock-comment-face)))
 
 (defun akmuch-display-search ()
   (interactive)
   (let ((buffer-read-only nil) sstart)
     (setq akmuch-display-type 'search)
     (erase-buffer)
-    ;; (call-process "notmuch" nil nil nil "new")
     (eval (append (list 'call-process "notmuch" nil (current-buffer) nil
-			"search") ;(concat "--limit=" (number-to-string (- (frame-height) 2)))
+			"search")
 		  akmuch-search))
     (goto-char (point-min))
     (while (< (point) (point-max))
       (akmuch-format-search-result)
       (akmuch-fontify-search-result nil)
       (forward-line 1))
-    (setq header-line-format
-	  (concat (number-to-string (- (line-number-at-pos) 1))
-		  " results for search '"
-		  (mapconcat 'identity akmuch-search " ")
-		  "'"))
-    (unless (eq (point-min) (point-max))
-      (delete-char -1)
-      (goto-char (point-min)))))
+      (setq header-line-format
+	    (concat (number-to-string (- (line-number-at-pos) 1))
+		    " results for search '"
+		    (mapconcat 'identity akmuch-search " ")
+		    "'"))
+      (unless (eq (point-min) (point-max))
+	(delete-char -1)
+	(goto-char (point-min))))
+  (akmuch-enable-following))
 
 (defun akmuch-quit ()
   (interactive)
@@ -213,13 +243,13 @@
       akmuch-current-thread-id
     (save-excursion
       (goto-char (point-at-bol))
-      (search-forward-regexp "[ >]")
-      (let ((thread
-	     (buffer-substring-no-properties
-	      (point-at-bol) (- (point) 1))))
-	(when (eq akmuch-display-type 'search)
-	  (setq akmuch-current-thread-id thread))
-	thread))))
+      (when (search-forward-regexp "[ >]" nil t)
+	(let ((thread
+	       (buffer-substring-no-properties
+		(point-at-bol) (- (point) 1))))
+	  (when (eq akmuch-display-type 'search)
+	    (setq akmuch-current-thread-id thread))
+	  thread)))))
 
 (defun akmuch-pipe-part (command)
   (interactive (list (read-shell-command "Command: ")))
@@ -459,8 +489,9 @@
 (defun akmuch-view-latest ()
   (interactive)
   (akmuch-next 0)
-  (akmuch-view
-   (akmuch-get-latest-message-id)))
+  (let ((mid (akmuch-get-latest-message-id)))
+    (pop-to-buffer "*akmuch message*")
+    (akmuch-view mid)))
 
 (defun akmuch-thread-list (&optional nomove)
   (interactive)
@@ -598,7 +629,7 @@
 
 (defun akmuch-add-search (search)
   (interactive "sAdd to search: ")
-  (akmuch-search (concat akmuch-search " " search)))
+  (akmuch-search (concat (car akmuch-search) " " search)))
 
 (defun akmuch-inbox ()
   (interactive)
@@ -622,14 +653,21 @@
 	psave)
     (erase-buffer)
     (while terms
+      (insert (cdr (car terms)))
+      (insert "\n")
+      (setq terms (cdr terms)))
+    (shell-command-on-region
+     (point-min) (point-max)
+     "notmuch count --batch"
+     (current-buffer) t)
+    (goto-char (point-min))
+    (setq terms akmuch-summary-terms)
+    (while terms
       (insert (format "%-30s" (car (car terms))))
-      (setq psave (point))
-      (call-process "notmuch" nil t nil "count" (cdr (car terms)))
-      (goto-char psave)
-      (if (> (string-to-number (buffer-substring (point) (point-at-eol))) 40)
-	  (put-text-property (point) (point-at-eol) 'face 'font-lock-warning-face))
-      (forward-line)
+      (forward-line 1)
       (setq terms (cdr terms)))))
+    ;; (if (> (string-to-number (buffer-substring (point) (point-at-eol))) 40)
+    ;; 	  (put-text-property (point) (point-at-eol) 'face 'font-lock-warning-face))
 
 (defun akmuch-delete (&optional from-here)
   (interactive "P")
@@ -658,6 +696,10 @@
 		  (list "--" (akmuch-get-threadid))))
     (eval arg-list))
   (akmuch-refresh))
+
+(defun akmuch-mark ()
+  (interactive)
+  (akmuch-tag "*"))
 
 (defun akmuch-reply-sender ()
   (interactive)
@@ -756,20 +798,21 @@
   (when (get-buffer "mail")
     (with-current-buffer "mail"
       (when (string-equal mode-name "Akmuch")
-	(let ((unread
-	       (string-to-number
-		(with-temp-buffer
-		  (call-process "notmuch" nil (current-buffer) nil
-				"count" "tag:unread")
-		  (buffer-substring (point-min) (- (point-max) 1)))))
-	      (total
-	       (string-to-number
-		(with-temp-buffer
-		  (call-process "notmuch" nil (current-buffer) nil
-				"count" "*")
-		  (buffer-substring (point-min) (- (point-max) 1))))))
+	(let (unread marked total)
+	  (with-temp-buffer
+	    (insert "tag:unread\ntag:*\n*")
+	    (shell-command-on-region
+	     (point-min) (point-max)
+	     "notmuch count --batch --output=threads"
+	     (current-buffer) t)
+	    (goto-char (point-min))
+	    (setq unread (buffer-substring (point) (point-at-eol)))
+	    (forward-line)
+	    (setq marked (buffer-substring (point) (point-at-eol)))
+	    (forward-line)
+	    (setq total (buffer-substring (point) (point-at-eol))))
 	  (setq mode-line-buffer-identification
-		(format "%s (%d/%d unread)" (buffer-name) unread total))
+		(format "%s (U:%s M:%s T:%s)" (buffer-name) unread marked total))
 	  (if (> unread 0)
 	      (setq akmuch-mail-indicator (list (format " ✉ (%d)" unread)))
 	    (setq akmuch-mail-indicator (list ""))))))))
@@ -782,7 +825,7 @@
 
 (defun akmuch ()
   (interactive)
-  (switch-to-buffer "Mail")
+  (switch-to-buffer "mail")
   (akmuch-mode)
   (akmuch-display-search))
 
