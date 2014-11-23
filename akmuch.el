@@ -15,6 +15,11 @@
   "The default directory for writing attachments to")
 (defcustom akmuch-long-line 100
   "What should be considered long line for filling mail/reply")
+(defcustom akmuch-summary-terms
+  '(("inbox" . "tag:inbox")
+    ("unread" . "tag:unread")
+    ("recent" . "date:-1d.."))
+  "Example summary terms")
 
 (defvar akmuch-mode-map
       (let ((map (make-sparse-keymap)))
@@ -161,7 +166,8 @@
       (insert " ")
       (goto-char (point-at-eol))
       (delete-char -4)
-      (akmuch-fontify-search-result nil)))
+      (when (eq akmuch-display-type 'search)
+	  (akmuch-fontify-search-result nil))))
   (forward-line num)
   (when (search-forward-regexp " " nil t)
     (delete-char -1)
@@ -224,8 +230,7 @@
 	  (search-forward-regexp " ")
 	  (setq n (string-to-number (buffer-substring pt (point)))))
       (setq n (read-number "Part number: ")))
-    (start-process "pipe" nil "sh"
-		   "-c" (format "notmuch show --part=%d '%s' | %s"
+    (shell-command (format "notmuch show --part=%d '%s' | %s"
 			   n akmuch-current-message-id command))))
 
 (defun akmuch-view-mime ()
@@ -322,7 +327,11 @@
       (akmuch-parse-message-contents (point) theend buff type))
     (akmuch-fill-message)
     (akmuch-colorize-message)
-    (goto-char (point-min))))
+    (goto-char (point-min))
+    (when (eq type 'list)
+      (search-forward-regexp "^$")
+      (search-forward-regexp "^ [0-9]")
+      (forward-char -1))))
 
 (defun akmuch-parse-message-contents (start end buff type)
   (let (tmp pend (depth 0) (c 0))
@@ -607,6 +616,7 @@
   (interactive)
   (when (not (listp akmuch-summary-terms))
     (message "no summary terms registered"))
+  (setq akmuch-display-type 'summary)
   (let ((terms akmuch-summary-terms)
 	(buffer-read-only nil)
 	psave)
