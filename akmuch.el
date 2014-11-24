@@ -494,7 +494,7 @@
   (interactive)
   (akmuch-next 0)
   (let ((mid (akmuch-get-latest-message-id)))
-    (pop-to-buffer "*akmuch message*")
+    ;; (pop-to-buffer "*akmuch message*")
     (akmuch-view mid)))
 
 (defun akmuch-thread-list (&optional nomove)
