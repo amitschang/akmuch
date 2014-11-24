@@ -707,16 +707,7 @@
 
 (defun akmuch-reply (&optional senderonly)
   (interactive)
-  (let (mid faddr)
-    ;; (if (not (null akmuch-current-message-id))
-    ;; 	(setq mid akmuch-current-message-id)
-    ;;   (goto-char (point-at-eol))
-    ;;   (when (search-backward-regexp "^\^Lmessage{ " nil t)
-    ;; 	(forward-char 10)
-    ;; 	(setq mid (buffer-substring
-    ;; 		   (point)
-    ;; 		   (save-excursion (search-forward-regexp " ") (- (point) 1))))
-    ;; 	(message "%s" mid)))
+  (let (mid faddr m-strt m-end)
     (if (eq akmuch-display-type 'search)
 	(setq mid (akmuch-get-latest-message-id))
       (setq mid akmuch-current-message-id))
@@ -733,21 +724,32 @@
       (forward-line -1)
       (insert "--text follows this line--\n\n")
       (goto-char (point-min))
-      (search-forward-regexp "^To: ")
-      (setq tstart (point))
-      (search-forward-regexp "^[^ \t]")
-      (replace-string ">," ">,\n " nil tstart (point-at-bol))
-      (search-forward-regexp "^In-Reply-To:")
-      (add-text-properties (point-at-bol)
-			   (save-excursion (search-forward-regexp "^[^ \t]")
-				  (- (point) 1))
-			   '(invisible t read-only t))
-      (goto-char tstart)
-      (search-forward-regexp "^References:")
-      (add-text-properties (point-at-bol)
-			   (save-excursion (search-forward-regexp "^[^ \t]")
-				  (- (point) 1))
-			   '(invisible t read-only t))
+      ;; make to and cc fields a little prettier
+      (save-excursion
+	(search-forward-regexp "^To:")
+	(setq m-end 
+	      (save-excursion
+		(search-forward-regexp "^[^ \t]") (point)))
+	(while (re-search-forward "\t" m-end t)
+	  (replace-match " ")))
+      (save-excursion
+	(when (search-forward-regexp "^Cc:" nil t)
+	(setq m-end
+	      (save-excursion
+		(search-forward-regexp "^[^ \t]") (point)))
+	(while (re-search-forward "\t" m-end t)
+	  (replace-match " "))))
+      ;; hide the in-reply-to and references fields
+      (save-excursion
+	(search-forward-regexp "^In-Reply-To:")
+	(setq m-strt (point-at-bol))
+	(search-forward-regexp "^[^ \t]")
+	(add-text-properties m-strt (- (point) 1) '(invisible t read-only t)))
+      (save-excursion
+	(search-forward-regexp "^References:")
+	(setq m-strt (point-at-bol))
+	(search-forward-regexp "^[^ \t]")
+	(add-text-properties m-strt (- (point) 1) '(invisible t read-only t)))
       (search-forward "--text follows this line--")
       (forward-line)
       (message-mode)
