@@ -37,9 +37,13 @@
 	(define-key map (kbd "f") 'akmuch-forward)
 	(define-key map (kbd "d") 'akmuch-delete)
 	(define-key map (kbd "t") 'akmuch-tag)
+	(define-key map (kbd "T") 'akmuch-tag-marked)
 	(define-key map (kbd "l") 'akmuch-thread-list)
 	(define-key map (kbd "M") 'akmuch-view-mime)
 	(define-key map (kbd "|") 'akmuch-pipe-part)
+	(define-key map (kbd "SPACE") 'akmuch-mark)
+	(define-key map (kbd "m") 'akmuch-mark-move)
+	(define-key map (kbd "U") 'akmuch-unmark-all)
 	map))
 
 (defun akmuch-format-search-result ()
@@ -682,24 +686,44 @@
 		  "-inbox" "-unread" tid)
     (akmuch-quit)))
 
-(defun akmuch-tag (tags)
+(defun akmuch-tag (tags &optional marked)
   (interactive "sTags: ")
   (let ((tag-list (split-string tags " "))
-	arg-list)
-    (setq tag-list 
+	arg-list ident buff (current-buffer) tbuff)
+    (if marked
+	(setq ident "tag:*")
+      (setq ident (akmuch-get-threadid)))
+    (setq tag-list
 	  (mapcar (lambda (s)
 		    (if (string-match "^[-\\+]" s) s (concat "+" s)))
 	    tag-list))
     (setq arg-list
 	  (append '(call-process "notmuch" nil nil nil "tag")
 		  tag-list
-		  (list "--" (akmuch-get-threadid))))
+		  (list "--" ident)))
     (eval arg-list))
   (akmuch-refresh))
 
 (defun akmuch-mark ()
   (interactive)
   (akmuch-tag "*"))
+
+(defun akmuch-mark-move ()
+  (interactive)
+  (akmuch-mark)
+  (akmuch-next))
+
+(defun akmuch-unmark ()
+  (interactive)
+  (akmuch-tag "-*"))
+
+(defun akmuch-unmark-all ()
+  (interactive)
+  (akmuch-tag "-*" t))
+
+(defun akmuch-tag-marked (tags)
+  (interactive "sTags: ")
+  (akmuch-tag tags t))
 
 (defun akmuch-reply-sender ()
   (interactive)
