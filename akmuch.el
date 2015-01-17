@@ -13,6 +13,8 @@
   "number of characters to display subject")
 (defcustom akmuch-default-dir "~/"
   "The default directory for writing attachments to")
+(defcustom akmuch-fill-messages t
+  "fill messages in view and reply buffers?")
 (defcustom akmuch-long-line 100
   "What should be considered long line for filling mail/reply")
 (defcustom akmuch-summary-terms
@@ -41,7 +43,7 @@
 	(define-key map (kbd "l") 'akmuch-thread-list)
 	(define-key map (kbd "M") 'akmuch-view-mime)
 	(define-key map (kbd "|") 'akmuch-pipe-part)
-	(define-key map (kbd "SPACE") 'akmuch-mark)
+	(define-key map (kbd "SPC") 'akmuch-mark)
 	(define-key map (kbd "m") 'akmuch-mark-move)
 	(define-key map (kbd "U") 'akmuch-unmark-all)
 	map))
@@ -359,7 +361,8 @@
       ;; Now go through the message and format the output
       ;;
       (akmuch-parse-message-contents (point) theend buff type))
-    (akmuch-fill-message)
+    (when akmuch-fill-messages
+      (akmuch-fill-message))
     (akmuch-colorize-message)
     (goto-char (point-min))
     (when (eq type 'list)
@@ -407,7 +410,10 @@
 	  (let ((start (point)))
 	    (call-process "notmuch" nil (current-buffer) nil
 			  "show" (format "--part=%d" c) mid)
-	    (w3m-region start (point))
+	    (if (featurep 'w3m)
+		(w3m-region start (point))
+	      (shell-command-on-region start (point) "w3m -dump -T text/html"
+				       (current-buffer) t nil nil))
 	    (font-lock-unfontify-region start (point)))))
       (if (looking-at "\^Lpart{")
 	  nil
@@ -742,7 +748,8 @@
 			"reply" "--reply-to=sender" mid)
 	(call-process "notmuch" nil (current-buffer) nil
 		      "reply" mid))
-      (akmuch-fill-message)
+      (when akmuch-fill-messages
+	(akmuch-fill-message))
       (goto-char (point-min))
       (search-forward-regexp "\n\n")
       (forward-line -1)
@@ -829,7 +836,7 @@
 	    (insert "tag:unread\ntag:*\n*")
 	    (shell-command-on-region
 	     (point-min) (point-max)
-	     "notmuch count --batch --output=threads"
+	     "notmuch count --batch"
 	     (current-buffer) t)
 	    (goto-char (point-min))
 	    (setq unread (buffer-substring (point) (point-at-eol)))
@@ -839,6 +846,7 @@
 	    (setq total (buffer-substring (point) (point-at-eol))))
 	  (setq mode-line-buffer-identification
 		(format "%s (U:%s M:%s T:%s)" (buffer-name) unread marked total))
+	  (setq unread (string-to-number unread))
 	  (if (> unread 0)
 	      (setq akmuch-mail-indicator (list (format " ✉ (%d)" unread)))
 	    (setq akmuch-mail-indicator (list ""))))))))
