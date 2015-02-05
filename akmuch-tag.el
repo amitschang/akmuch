@@ -49,3 +49,5 @@
 (defun akmuch-tag-marked (tags)
   (interactive "sTags: ")
   (akmuch-tag tags t))
+
+(provide 'akmuch-tag)

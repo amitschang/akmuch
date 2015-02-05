@@ -40,7 +40,22 @@
       (setq akmuch-message-buffer
 	    (get-buffer-create "*akmuch message*")))
     (with-current-buffer akmuch-message-buffer
-      (akmuch-message-view mid nil))))
+      (akmuch-message-view mid nil))
+    (display-buffer akmuch-message-buffer)))
+
+(defun akmuch-page ()
+  ;;
+  ;; Page through messages
+  ;;
+  (interactive)
+  (let ((buffer akmuch-message-buffer)
+	(window (car (window-list))))
+    (display-buffer buffer)
+    (select-window (get-buffer-window buffer))
+    (condition-case nil
+	(scroll-up)
+      (error (akmuch-tag "-unread")))
+    (select-window window)))
 
 (defun akmuch-message-view (id expanded-recip &optional type)
   (let ((buffer-read-only nil)
@@ -56,8 +71,6 @@
     (with-temp-buffer
       (call-process "notmuch" nil (current-buffer) nil
 		    "show" "--entire-thread" id)
-      (start-process "junk" nil "notmuch"
-		     "tag" "-unread" id)
       (goto-char (point-min))
       (search-forward-regexp "\^Lmessage{ .* match:1 ")
       ;;

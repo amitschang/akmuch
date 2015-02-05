@@ -2,6 +2,7 @@
 (require 'akmuch-message)
 (require 'akmuch-reply)
 (require 'akmuch-summarize)
+(require 'akmuch-tag)
 
 (defvar akmuch-search '("tag:inbox"))
 (defvar akmuch-search-history '())
