@@ -1,5 +1,7 @@
 (require 'akmuch-search)
 
+(defvar akmuch-seen-whole-message nil)
+
 (defcustom akmuch-show-expanded-recipients nil
   "whether to show full recipient list by default or summary")
 
@@ -30,17 +32,20 @@
       (goto-char (point-min))
       (buffer-substring (point) (point-at-eol)))))
 
-(defun akmuch-view ()
+(defun akmuch-view (&optional type)
   ;;
   ;; View a message in the message buffer
   ;;
   (interactive)
-  (let ((mid (akmuch-get-latest-message-id)))
+  (let ((mid (akmuch-get-latest-message-id))
+	(sbuff akmuch-search-buffer))
     (unless (buffer-live-p akmuch-message-buffer)
       (setq akmuch-message-buffer
 	    (get-buffer-create "*akmuch message*")))
     (with-current-buffer akmuch-message-buffer
-      (akmuch-message-view mid nil))
+      (akmuch-message-view mid nil type)
+      (akmuch-message-mode)
+      (setq akmuch-search-buffer sbuff))
     (display-buffer akmuch-message-buffer)))
 
 (defun akmuch-page ()
@@ -51,10 +56,21 @@
   (let ((buffer akmuch-message-buffer)
 	(window (car (window-list))))
     (display-buffer buffer)
-    (select-window (get-buffer-window buffer))
-    (condition-case nil
-	(scroll-up)
-      (error (akmuch-tag "-unread")))
+    (set-buffer buffer)
+    (if akmuch-seen-whole-message
+	(akmuch-search-next 1)
+      (select-window (get-buffer-window buffer))
+      (condition-case nil
+	  (save-excursion
+	    (scroll-up)
+	    (when (pos-visible-in-window-p (point-max))
+	      (setq akmuch-seen-whole-message t)
+	      (goto-char (point-max))
+	      (recenter-top-bottom -2)
+	      (message "End of message")))
+	(end-of-buffer
+	 ;; (akmuch-tag "-unread")
+	 (setq akmuch-seen-whole-message t))))
     (select-window window)))
 
 (defun akmuch-message-view (id expanded-recip &optional type)
@@ -256,7 +272,7 @@
 
 (defun akmuch-view-mime ()
   (interactive)
-  (akmuch-view akmuch-current-message-id 'list))
+  (akmuch-view 'list))
 
 (defun akmuch-view-original ()
   (interactive)
@@ -283,5 +299,11 @@
 	(put-text-property (point) (point-at-eol)
 			   'face 'font-lock-warning-face))
       (forward-line))))
+
+(define-derived-mode akmuch-message-mode nil "Akmuch [message]"
+  "Major mode for mail using notmuch (message buffers)"
+  (set (make-local-variable 'akmuch-seen-whole-message) nil)
+  (make-local-variable 'akmuch-search-buffer)
+  (setq buffer-read-only t))
 
 (provide 'akmuch-message)
