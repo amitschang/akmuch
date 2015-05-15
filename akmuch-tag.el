@@ -27,6 +27,9 @@
 	    (setq tid (concat tid " " (akmuch-get-thread-id))))))
     (call-process "notmuch" nil nil nil "tag"
 		  "-inbox" "-unread" tid)
+    (if (eq (point-at-eol) (point-max))
+	(forward-line -1)
+      (forward-line))
     (akmuch-refresh)))
 
 (defun akmuch-mark ()
