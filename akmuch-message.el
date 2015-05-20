@@ -300,6 +300,12 @@
 			   'face 'font-lock-warning-face))
       (forward-line))))
 
+(defvar akmuch-message-mode-map
+      (let ((map (make-sparse-keymap)))
+	(define-key map (kbd "q")   'kill-buffer-and-window)
+	(define-key map (kbd "o")   'other-window)
+	map))
+
 (define-derived-mode akmuch-message-mode nil "Akmuch [message]"
   "Major mode for mail using notmuch (message buffers)"
   (set (make-local-variable 'akmuch-seen-whole-message) nil)

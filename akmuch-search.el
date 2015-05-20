@@ -1,4 +1,4 @@
-(defcustom akmuch-search-limit 400
+(defcustom akmuch-search-limit 100
   "Default limit to the number of threads to display in search page")
 (defvar akmuch-search-offset 0)
 (defvar akmuch-search-buffer nil)
@@ -24,9 +24,12 @@
 	(define-key map (kbd "T")   'akmuch-tag-marked)
 	(define-key map (kbd "l")   'akmuch-thread-list)
 	(define-key map (kbd "M")   'akmuch-view-mime)
+	(define-key map (kbd "o")   'other-window)
 	(define-key map (kbd "O")   'akmuch-view-original)
 	(define-key map (kbd "|")   'akmuch-pipe-part)
 	(define-key map (kbd "SPC") 'akmuch-page)
+	(define-key map (kbd "]")   'akmuch-search-page-next)
+	(define-key map (kbd "[")   'akmuch-search-page-prev)
 	(define-key map (kbd "m")   'akmuch-mark-move)
 	(define-key map (kbd "U")   'akmuch-unmark-all)
 	(define-key map (kbd "<")   'scroll-right)
@@ -46,6 +49,7 @@
 
 (defun akmuch-search (search)
   (interactive "sSearch: ")
+  (setq akmuch-search-offset 0)
   (setq akmuch-search (list search))
   (setq akmuch-search-history
 	(append akmuch-search-history akmuch-search))
@@ -59,13 +63,13 @@
 (defun akmuch-inbox ()
   (interactive)
   (setq akmuch-search '("tag:inbox"))
-  (akmuch-display-search)
+  (akmuch-search (car akmuch-search))
   (akmuch-next 0))
 
 (defun akmuch-unread ()
   (interactive)
   (setq akmuch-search '("tag:unread"))
-  (akmuch-display-search)
+  (akmuch-search (car akmuch-search))
   (akmuch-next 0))
 
 (defun akmuch-reverse-order ()
@@ -73,6 +77,16 @@
   (if (string-equal akmuch-search-sorting "newest-first")
       (setq akmuch-search-sorting "oldest-first")
     (setq akmuch-search-sorting "newest-first"))
+  (akmuch-refresh))
+
+(defun akmuch-search-page-next ()
+  (interactive)
+  (setq akmuch-search-offset (+ akmuch-search-limit akmuch-search-offset))
+  (akmuch-refresh))
+
+(defun akmuch-search-page-prev ()
+  (interactive)
+  (setq akmuch-search-offset (- akmuch-search-offset akmuch-search-limit))
   (akmuch-refresh))
 
 (defun akmuch-format-search-result ()
@@ -175,10 +189,11 @@
       (akmuch-fontify-search-result nil)
       (forward-line 1))
     (setq header-line-format
-	  (concat (number-to-string (- (line-number-at-pos) 1))
-		  " results for search '"
+	  (format "+%d %d results for search '%s' - %s"
+		  akmuch-search-offset
+		  (- (line-number-at-pos) 1)
 		  (mapconcat 'identity akmuch-search " ")
-		  "' - " akmuch-search-sorting))
+		  akmuch-search-sorting))
     (unless (eq (point-min) (point-max))
       (delete-char -1)
       (goto-char (point-min))))
@@ -226,10 +241,13 @@
 
 (defun akmuch-highlight-current ()
   (let ((previous-thread-id akmuch-current-thread-id))
+    (if (= (point-min) (point-max))
+    	(message "no messages")
     (akmuch-set-current-thread-id)
     (unless (string-equal previous-thread-id
 			akmuch-current-thread-id)
       (akmuch-search-next 0))))
+  )
 
 (defun akmuch-disable-following ()
   (setq post-command-hook nil))

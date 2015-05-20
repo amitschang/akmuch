@@ -25,9 +25,10 @@
 	      (buffer-substring (point) (point-at-eol))) 40)
     	  (put-text-property (point) (point-at-eol)
 			     'face 'font-lock-warning-face))
-      (insert (format "%-30s" (car (car terms))))
+      (insert (format "%-15s" (car (car terms))))
       (forward-line 1)
       (setq terms (cdr terms)))
+    (goto-char (point-min))
     (akmuch-summary-mode)
     (setq akmuch-search-buffer sbuff)
     ))
@@ -56,12 +57,21 @@
       (pop-to-buffer akmuch-search-buffer)
       (akmuch-search terms))))
 
+(defun akmuch-summary-next ()
+  (interactive)
+  (forward-line 1))
+
+(defun akmuch-summary-prev ()
+  (interactive)
+  (forward-line -1))
+
 (defvar akmuch-summary-mode-map
       (let ((map (make-sparse-keymap)))
 	(define-key map (kbd "RET") 'akmuch-summary-search)
 	(define-key map (kbd "n")   'akmuch-summary-next)
 	(define-key map (kbd "p")   'akmuch-summary-prev)
 	(define-key map (kbd "t")   'akmuch-summary-tag)
+	(define-key map (kbd "o")   'other-window)
 	map))
 
 (define-derived-mode akmuch-summary-mode nil "Akmuch [summary]"
