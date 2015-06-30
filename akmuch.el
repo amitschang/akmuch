@@ -94,19 +94,6 @@
 	    (setq akmuch-current-thread-id thread))
 	  thread)))))
 
-(defun akmuch-pipe-part (command)
-  (interactive (list (read-shell-command "Command: ")))
-  (let ((pt (point))
-	n)
-    (if (looking-at "[0-9]")
-	(save-excursion
-	  (search-forward-regexp " ")
-	  (setq n (string-to-number (buffer-substring pt (point)))))
-      (setq n (read-number "Part number: ")))
-    (shell-command (format "notmuch show --part=%d '%s' | %s"
-			   n akmuch-current-message-id command))))
-
-
 (defun akmuch-thread-list (&optional nomove)
   (interactive)
   (let ((thread (akmuch-get-threadid))
@@ -161,78 +148,6 @@
 	"\n" "..."
 	(buffer-substring start end))
        "..."))))
-
-(defun akmuch-enumerate-attachments ()
-  (let ((id (if (eq akmuch-display-type 'message)
-		akmuch-current-message-id
-	      (akmuch-get-threadid)))
-	(list '())
-	tmp)
-    (with-temp-buffer
-      (call-process "notmuch" nil (current-buffer) nil
-		    "show" id)
-      (goto-char (point-min))
-      (while (search-forward-regexp "^\^Lattachment{ " nil t)
-	(setq tmp (list (save-excursion
-			  (buffer-substring
-			   (progn
-			     (search-backward-regexp "^\^Lmessage{ ")
-			     (search-forward " ")
-			     (point))
-			   (progn
-			     (search-forward-regexp " ")
-			     (- (point) 1))))))
-	(search-forward-regexp "ID: ")
-	(setq tmp
-	      (append
-	       tmp
-	       (list (buffer-substring
-		      (point)
-		      (progn (search-forward ",") (- (point) 1))))))
-	(search-forward-regexp "Filename: ")
-	(setq tmp
-	      (append
-	       tmp
-	       (list (replace-regexp-in-string
-		      " " "_"
-		      (buffer-substring
-		       (point)
-		       (progn (search-forward ",") (- (point) 1)))))))
-    	(search-forward-regexp "Content-type: ")
-	(setq tmp (append tmp (list (buffer-substring
-				     (point)
-				     (point-at-eol)))))
-	(setq list (append list (list tmp)))))
-    list))
-
-(defun akmuch-download-attachment (&optional number dir name)
-  (interactive)
-  (let ((att (akmuch-enumerate-attachments)))
-    (if (= (length att) 0)
-	(message "Message has no attachments")
-      (when (interactive-p)
-	(setq number
-	      (read-string (format "Att number [%d]: " (length att))))
-	(setq dir (read-directory-name
-		   (format "Save to [%s]: " akmuch-default-dir)))
-	(if (string-match "," number)
-	    (setq number (map 'list 'string-to-number (split-string number ",")))
-	  (if (string-equal number "*")
-	      (setq number (number-sequence 1 (length att)))
-	    (setq number (list (string-to-number number)))))
-	(while number
-	  (with-temp-buffer
-	    (let ((coding-system-for-read 'no-conversion)
-		  (coding-system-for-write 'no-conversion))
-	      (setq buffer-file-coding-system nil)
-	      (call-process "notmuch" nil (current-buffer) nil
-			    "show"
-			    (concat "--part=" (nth 1 (nth (- (car number) 1) att)))
-			    (nth 0 (nth (- (car number) 1) att)))
-	      (setq default-directory dir)
-	      (write-region nil nil (nth 2 (nth (- (car number) 1) att)))))
-	  (setq number (cdr number)))))))
-
 
 (defun akmuch-check-unread-timer ()
   (when (get-buffer "mail")

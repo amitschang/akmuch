@@ -274,6 +274,36 @@
   (interactive)
   (akmuch-view 'list))
 
+(defun akmuch-select-part ()
+  (akmuch-view-mime)
+  (let ((pt (point))
+	n)
+    (if (looking-at "[0-9]")
+	(save-excursion
+	  (search-forward-regexp " ")
+	  (setq n (string-to-number (buffer-substring pt (point)))))
+      (setq n (read-number "Part number: ")))
+    n))
+
+(defun akmuch-pipe-part (&optional command)
+  (interactive)
+  (let ((part (akmuch-select-part)))
+    (unless command
+      (setq command (read-shell-command "[pipe] command: ")))
+    (shell-command (format "notmuch show --part=%d '%s' | %s"
+			   part akmuch-current-message-id command))))
+
+(defun akmuch-command-part (&optional command)
+  (interactive)
+  (let ((part (akmuch-select-part)))
+    (unless command
+      (setq command (read-shell-command "[async] command: ")))
+    (setq filename (make-temp-file "/tmp/akmuch_attachment_"))
+    (shell-command (format "notmuch show --part=%d '%s' > %s"
+			   part akmuch-current-message-id filename))
+    (start-process-shell-command "akmuch-att-command" nil
+		   (format "%s %s" command filename))))
+
 (defun akmuch-view-original ()
   (interactive)
   (with-current-buffer (get-buffer-create "*Akmuch Original*")
