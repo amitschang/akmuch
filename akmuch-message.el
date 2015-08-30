@@ -1,6 +1,10 @@
 (require 'akmuch-search)
 
 (defvar akmuch-seen-whole-message nil)
+(defvar akmuch-message-filename nil)
+(defvar akmuch-message-mode nil)
+(defcustom akmuch-notmuch-helper "akmuch-helper"
+  "akmuch view helper program")
 
 (defcustom akmuch-show-expanded-recipients nil
   "whether to show full recipient list by default or summary")
@@ -16,37 +20,66 @@
        (point-at-bol)
        (+ (point-at-bol) 23)))))
 
-(defun akmuch-get-latest-message-id ()
-  ;;
-  ;; get the latest message id of this thread. If there are any unread
-  ;; message, return the first one, otherwise return the last message
-  ;;
-  (let ((thread (akmuch-get-thread-id)))
-    (with-temp-buffer
-      (call-process "notmuch" nil (current-buffer) nil
-		    "search" "--output=messages" thread
-		    "tag:unread")
-      (when (eq (point) (point-min))
-	(call-process "notmuch" nil (current-buffer) nil
-		      "search" "--output=messages" thread))
-      (goto-char (point-min))
-      (buffer-substring (point) (point-at-eol)))))
-
 (defun akmuch-view (&optional type)
   ;;
   ;; View a message in the message buffer
   ;;
   (interactive)
-  (let ((mid (akmuch-get-latest-message-id))
-	(sbuff akmuch-search-buffer))
+  (let ((mid (akmuch-get-thread-id))
+	(sbuff akmuch-search-buffer)
+	file)
     (unless (buffer-live-p akmuch-message-buffer)
       (setq akmuch-message-buffer
 	    (get-buffer-create "*akmuch message*")))
-    (with-current-buffer akmuch-message-buffer
-      (akmuch-message-view mid nil type)
-      (akmuch-message-mode)
-      (setq akmuch-search-buffer sbuff))
-    (display-buffer akmuch-message-buffer)))
+    ;; prepare a list of message files
+    (akmuch-message-prep mid)
+    (akmuch-message-view mid t nil type)))
+
+(defun akmuch-message-view (mid any-unread show-all type)
+  (let (file)
+  ;; see if there is unread one to view
+    (if show-all
+	(setq file (with-current-buffer " *akmuch message files*"
+		     (buffer-substring (point-min) (point-max))))
+      (when any-unread
+	(setq file (akmuch-message-latest-unread mid))
+	(when (not (string= file ""))
+	  (akmuch-message-set-filename file)))
+      (when (or (not file) (string= file ""))
+	(setq file (akmuch-message-get-filename))))
+    (if (string= file "")
+	(message "sorry could not find filename...")
+      (with-current-buffer akmuch-message-buffer
+	(akmuch-message-mode)
+	(akmuch-message-view-file file type)
+	(setq akmuch-search-buffer akmuch-search-buffer)
+	(setq akmuch-message-filename file)
+	(setq akmuch-message-mode type)
+	(setq akmuch-message-id mid))
+      (display-buffer akmuch-message-buffer))))
+
+(defun akmuch-message-next ()
+  (interactive)
+  (with-current-buffer " *akmuch message files*"
+    (goto-char (point-min))
+    (when (search-forward-regexp "^ " nil t)
+      (delete-char -1))
+    (forward-line)
+    (if (not (looking-at "$"))
+	(insert " ")
+      (forward-line -1)
+      (insert " ")))
+  (akmuch-message-view nil nil nil 'view))
+
+(defun akmuch-message-prev ()
+  (interactive)
+  (with-current-buffer " *akmuch message files*"
+    (goto-char (point-min))
+    (when (search-forward-regexp "^ " nil t)
+      (delete-char -1))
+    (forward-line -1)
+    (insert " "))
+  (akmuch-message-view nil nil nil 'view))
 
 (defun akmuch-page ()
   ;;
@@ -73,177 +106,86 @@
 	 (setq akmuch-seen-whole-message t))))
     (select-window window)))
 
-(defun akmuch-message-view (id expanded-recip &optional type)
-  (let ((buffer-read-only nil)
-	(buff (current-buffer))
-	(c 0)
-	partshown theend hend
-	headerline mid start)
-    (if (null type)
-	(setq type 'view))
-    (when (eq akmuch-display-type 'threadlist)
-      (setq akmuch-quit-to 'threadlist))
-    (setq akmuch-display-type 'message)
-    (with-temp-buffer
-      (call-process "notmuch" nil (current-buffer) nil
-		    "show" "--entire-thread" id)
-      (goto-char (point-min))
-      (search-forward-regexp "\^Lmessage{ .* match:1 ")
-      ;;
-      ;; Get the boundaries of this message, for processing the header
-      ;; and parts
-      ;;
-      (setq start (point))
-      (setq theend (save-excursion (search-forward-regexp
-				    "\^Lmessage}" nil t)
-				   (point)))
-      (setq hend (save-excursion (search-forward-regexp
-				  "\^Lheader}" nil t)
-				 (point)))
-      ;;
-      ;; Now we process message info and header
-      ;;
-      (goto-char (+ (point-at-bol) 10))
-      (setq mid
-	    (buffer-substring-no-properties
-	     (point)
-	     (progn (search-forward-regexp " ")
-		    (- (point) 1))))
-      (forward-line 2)
-      (setq tmp (buffer-substring (point-at-bol) (point-at-eol)))
-      (search-forward-regexp "^Subject: ")
-      (setq headerline
-	    (format "[%d/%d] %s"
-		    (count-matches
-		     "\^Lmessage{ " (point-min) start)
-		    (count-matches
-		     "\^Lmessage{ " (point-min) (point-max))
-		    (replace-regexp-in-string
-		     "^ *R[Ee]: *" ""
-		     (buffer-substring-no-properties
-		      (point) (point-at-eol)))))
-      ;;
-      ;; Now that we have the header info, start formatting the
-      ;; message in the akmuch buffer
-      ;;
-      (with-current-buffer buff
-	(erase-buffer)
-	(setq header-line-format headerline)
-	(setq akmuch-current-message-id mid)
-	(insert (propertize tmp 'face font-lock-comment-face))
-	(insert "\n"))
-      ;;
-      ;; If there are recipients specified, make a shortened version
-      ;; of them for the display
-      ;;
-      (if (or expanded-recip akmuch-show-expanded-recipients)
-	  (progn
-	    (forward-line 1)
-	    (setq tmp (buffer-substring (point-at-bol) (point-at-eol)))
-	    (forward-line 1)
-	    (setq tmp (concat
-		       "\n"
-		       tmp
-		       (buffer-substring (point-at-bol) (point-at-eol))))
-	    (forward-line 1)
-	    (setq tmp (concat
-		       "\n"
-		       tmp
-		       (buffer-substring (point-at-bol) (point-at-eol)))))
-	(goto-char start)
-	(when (search-forward-regexp "^to: " hend t)
-	  (setq nrecip (count-matches "," (point) (point-at-eol)))
-	  (unless (search-forward-regexp "," (point-at-eol) t)
-	    (goto-char (point-at-eol)))
-	  (setq tmp (propertize (buffer-substring (point-at-bol) (point))
-				'face font-lock-comment-face))
-	  (when (> nrecip 0)
-	    (setq tmp (concat tmp (propertize (format " +%d more" nrecip)
-					      'face font-lock-comment-face))))
-	  (goto-char start)
-	  (when (search-forward-regexp "^cc: " hend t)
-	    (setq nrecip (+ 1 (count-matches "," (point) (point-at-eol))))
-	    (setq tmp (propertize (format "%s +%d Cc'd" tmp nrecip)
-				  'face font-lock-comment-face)))))
-      (with-current-buffer buff
-	(insert tmp)
-	(insert "\n"))
-      (with-current-buffer buff (insert "\n"))
-      ;;
-      ;; Now go through the message and format the output
-      ;;
-      (akmuch-parse-message-contents (point) theend buff type))
-    (when akmuch-fill-messages
-      (akmuch-fill-message))
-    (akmuch-colorize-message)
+(defun akmuch-message-get-filename ()
+  (with-current-buffer " *akmuch message files*"
     (goto-char (point-min))
-    (when (eq type 'list)
-      (search-forward-regexp "^$")
-      (search-forward-regexp "^ [0-9]")
-      (forward-char -1))))
+    (search-forward-regexp "^ " nil t)
+    (buffer-substring (point) (point-at-eol))))
 
-(defun akmuch-parse-message-contents (start end buff type)
-  (let (tmp pend (depth 0) (c 0))
-    (goto-char start)
-    (search-forward-regexp "^\^Lbody{")
-    (while (search-forward-regexp "^\^L\\(part\\|attachment\\){" end t)
-      (setq c (+ 1 c))
-      (setq depth (+ depth 1))
-      (search-forward-regexp "Content-type: " (point-at-eol))
-      (setq tmp (buffer-substring (point) (point-at-eol)))
-      (when (and (eq type 'view)
-		 (string-equal tmp "message/rfc822"))
-	(search-forward-regexp "\^Lheader{")
-	(forward-line 1)
-	(setq pend (save-excursion
-		     (search-forward-regexp "\^Lheader}")
-		     (- (point) 8)))
-	(setq tmp (buffer-substring (point) pend))
-	(with-current-buffer buff
-	  (insert "---------- Forwarded message ----------\n")
-	  (insert tmp))
-	(setq pend (save-excursion (search-forward-regexp "\^Lbody}") (point)))
-	(akmuch-parse-message-contents (point) pend buff type))
-      (when (eq type 'list)
-	(goto-char (point-at-bol))
-	(when (looking-at "\^Lattachment{")
-	  (search-forward-regexp "Filename: ")
-	  (setq tmp (format "%s (%s)" tmp (buffer-substring
-					   (point)
-					   (progn (search-forward-regexp ",")
-						  (- (point) 1))))))
-	(with-current-buffer buff
-	  (insert (format "%2d%s%s\n" c (make-string depth 32) tmp))))
-      (forward-line 1)
-      (when (and (null partshown)
-		 (looking-at "Non-text part: text/html")
-		 (eq type 'view))
-	(with-current-buffer buff
-	  (let ((start (point)))
-	    (call-process "notmuch" nil (current-buffer) nil
-			  "show" (format "--part=%d" c) mid)
-	    (if (featurep 'w3m)
-		(w3m-region start (point))
-	      (shell-command-on-region start (point) "w3m -dump -T text/html"
-				       (current-buffer) t nil nil))
-	    (font-lock-unfontify-region start (point)))))
-      (if (looking-at "\^Lpart{")
-	  nil
-	(setq start (point))
-	(search-forward-regexp "\^L\\(part\\|attachment\\)}")
-	(search-backward-regexp "\^L")
-	(setq pend (point))
-	(while (looking-at "\^L\\(part\\|attachment\\)}")
-	  (setq depth (- depth 1))
-	  (forward-line 1))
-	(goto-char start)
-	(when (and (not (looking-at "Non-text part:"))
-		   (eq type 'view))
-	(setq partshown t)
-	(setq tmp (buffer-substring start pend))
-	(with-current-buffer buff
-	  (insert tmp)))))))
+(defun akmuch-message-set-filename (file)
+  (with-current-buffer " *akmuch message files*"
+    (goto-char (point-min))
+    (search-forward-regexp "^ " nil t)
+    (delete-char -1)
+    (goto-char (point-min))
+    (search-forward-regexp file)
+    (goto-char (point-at-bol))
+    (insert " ")))    
 
+(defun akmuch-message-prep (id)
+  ;; get the list of filenames for the message
+  (with-current-buffer
+      (get-buffer-create " *akmuch message files*")
+    (erase-buffer)
+    (call-process "notmuch" nil (current-buffer) nil
+		  "search" "--output=files"
+		  "--sort=oldest-first"
+		  id)
+    (goto-char (point-max))
+    (forward-line -1)
+    (insert " ")))
+
+(defun akmuch-message-latest-unread (id)
+  (with-temp-buffer
+    (call-process "notmuch" nil (current-buffer) nil
+		  "search" "--output=files"
+		  "--sort=oldest-first"
+		  "--limit=1"
+		  "tag:unread" id)
+    (goto-char (point-min))
+    (search-forward-regexp "$")
+    (buffer-substring (point-at-bol) (point))))
+
+(defun akmuch-message-view-file (file &optional type)
+  (let ((buffer-read-only nil)
+	(helper-command "view"))
+    ;; find the message of thread we should read. The oldest unread or
+    ;; the most recent message
+    ;; now call our shower helper
+    (erase-buffer)
+    (if (eq type 'mime)
+	(setq helper-command "mime"))
+    (if (eq type 'attach)
+	(setq helper-command "attach"))
+    (save-excursion
+      (eval (append
+	     (list
+	      'call-process
+	      akmuch-notmuch-helper
+	      nil (current-buffer) nil
+	      helper-command)
+	     (split-string file))))
+    ;; make header line out of subject
+    (setq header-line-format
+	  (format
+	   "%s %s"
+	   (akmuch-message-get-thread-pos)
+	   (buffer-substring
+	    (point-at-bol)
+	    (point-at-eol))))
+    (delete-region (point-at-bol)
+		   (+ 1 (point-at-eol)))
+    (akmuch-colorize-message)))
+
+(defun akmuch-message-get-thread-pos ()
+  (let (n tot)
+    (with-current-buffer " *akmuch message files*"
+      (goto-char (point-min))
+      (search-forward-regexp "^ ")
+      (setq n (line-number-at-pos))
+      (setq tot (count-matches "^." (point-min) (point-max))))
+    (format "[%d/%d]" n tot)))
+    
 (defun akmuch-fill-message ()
   (interactive)
   (let (fillstart fillpre fillend)
@@ -272,37 +214,52 @@
 
 (defun akmuch-view-mime ()
   (interactive)
-  (akmuch-view 'list))
+  (akmuch-message-view nil nil nil 'mime))
+
+(defun akmuch-message-show-attachments-all ()
+  (interactive)
+  (akmuch-message-view nil nil t 'attach))
 
 (defun akmuch-select-part ()
-  (akmuch-view-mime)
-  (let ((pt (point))
-	n)
-    (if (looking-at "[0-9]")
+  (let ((mode (with-current-buffer akmuch-message-buffer
+		akmuch-message-mode)))
+    (when (not (or (eq mode 'mime) (eq mode 'attach)))
+      (akmuch-view-mime))
+    (let ((pt (point))
+	  n)
+      (if (looking-at "[0-9]")
 	(save-excursion
 	  (search-forward-regexp " ")
 	  (setq n (string-to-number (buffer-substring pt (point)))))
       (setq n (read-number "Part number: ")))
-    n))
+    n)))
 
 (defun akmuch-pipe-part (&optional command)
   (interactive)
-  (let ((part (akmuch-select-part)))
+  (let ((part (akmuch-select-part))
+	file)
     (unless command
       (setq command (read-shell-command "[pipe] command: ")))
-    (shell-command (format "notmuch show --part=%d '%s' | %s"
-			   part akmuch-current-message-id command))))
+    (setq file (with-current-buffer akmuch-message-buffer
+		 akmuch-message-filename))
+    (shell-command
+     (format "%s part %d %s | %s"
+	     akmuch-notmuch-helper part file command))))
 
 (defun akmuch-command-part (&optional command)
   (interactive)
-  (let ((part (akmuch-select-part)))
+  (let ((part (akmuch-select-part))
+	file)
     (unless command
       (setq command (read-shell-command "[async] command: ")))
+    (setq file (with-current-buffer akmuch-message-buffer
+		 akmuch-message-filename))
     (setq filename (make-temp-file "/tmp/akmuch_attachment_"))
-    (shell-command (format "notmuch show --part=%d '%s' > %s"
-			   part akmuch-current-message-id filename))
+    (shell-command 
+     (format "%s part %d %s > %s"
+	     akmuch-notmuch-helper part file filename))
     (start-process-shell-command "akmuch-att-command" nil
-		   (format "%s %s" command filename))))
+		   (format "%s %s; rm %s" command filename filename))))
 
 (defun akmuch-view-original ()
   (interactive)
@@ -323,8 +280,12 @@
   (interactive)
   (save-excursion
     (goto-char (point-min))
+    (while (not (looking-at "\n"))
+      (put-text-property (point) (point-at-eol)
+			 'face 'font-lock-string-face)
+      (forward-line))
     (while (< (point) (point-max))
-      (when (or (looking-at "^>\\( \\|$\\)")
+      (when (or (looking-at "^>>*\\( \\|$\\)")
 		(looking-at "^On .* wrote:$"))
 	(put-text-property (point) (point-at-eol)
 			   'face 'font-lock-warning-face))
@@ -339,7 +300,12 @@
 (define-derived-mode akmuch-message-mode nil "Akmuch [message]"
   "Major mode for mail using notmuch (message buffers)"
   (set (make-local-variable 'akmuch-seen-whole-message) nil)
+  (set (make-local-variable 'akmuch-mime-viewing-all) nil)
+  (set (make-local-variable 'akmuch-message-filename) nil)
+  (set (make-local-variable 'akmuch-message-mode) nil)
+  (set (make-local-variable 'akmuch-message-id) nil)
   (make-local-variable 'akmuch-search-buffer)
+  (setq header-line "akmuch message")
   (setq buffer-read-only t))
 
 (provide 'akmuch-message)

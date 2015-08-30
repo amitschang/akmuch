@@ -1,0 +1,98 @@
+#!/usr/bin/python
+
+import email
+import email.header
+import sys
+import subprocess
+
+def _mime_walk (mail,depth=0,attach=0,silent=False):
+    global mime_index
+    global parts_array
+    a = " "*depth
+    b = mail.get_content_type()
+    mime_index+=1
+    parts_array.append(mail)
+    if mail.is_multipart():
+        if not attach and not silent:
+            print "%2d %s%s" %(mime_index,a,b)
+        for part in mail.get_payload():
+            _mime_walk(part,depth+1,attach=attach,silent=silent)
+    elif not silent:
+        c = decode_one_header(mail.get_filename())
+        if mail.get_filename():
+            print "%2d %s%s (%s)" %(mime_index,a,b,c)
+        elif not attach:
+            print "%2d %s%s" %(mime_index,a,b)
+            
+def decode_one_header (header):
+    decoded = []
+    for i in email.header.decode_header(header):
+        h = i[0]
+        if i[1] != None:
+            h = h.decode(i[1],'ignore').encode('utf-8','ignore')
+        decoded.append(h)
+    return " ".join(decoded)
+
+def print_headers (mail):
+    print decode_one_header(mime.get("Subject"))
+    print "From:",decode_one_header(mime.get("From"))
+    print "To:",decode_one_header(mime.get("To"))
+    print ""
+
+def print_all_recips (mail):
+    for i in ['to','cc']:
+        r = mime.get(i)
+        if r:
+            print decode_one_header(r)
+
+op = sys.argv[1]
+mime_index = 0
+header_print = 1
+parts_array=[]
+file_ind = 2
+if op == 'part':
+    arg = sys.argv[2]
+    file_ind += 1
+    header_print = 0
+
+for msg in sys.argv[file_ind:]:
+    mail = open(msg,"r")
+    mime = email.message_from_file(mail)
+    mail.close()
+
+    if header_print:
+        print_headers(mime)
+        header_print = 0
+        
+    if op == 'view':
+        text = None
+        for part in mime.walk():
+            if part.get_content_type() == 'text/plain':
+                cset = part.get_content_charset()
+                text = part.get_payload(decode=1)
+                if cset:
+                    text = text.decode(cset,'ignore').encode('utf-8','ignore')
+                print text
+        #print some html if no suitable text parts
+        if not text:
+            for part in mime.walk():
+                if part.get_content_type() == 'text/html':
+                    text = part.get_payload(decode=1)
+                    pipe = subprocess.Popen(
+                        ['w3m','-T','text/html','-dump'],
+                        stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+                    (pout,perr) = pipe.communicate(input=text)
+                    print pout
+
+    if op == 'part':
+        _mime_walk(mime,silent=True)
+        print parts_array[int(arg)-1].get_payload(decode=1) 
+    
+    if op == 'mime':
+        _mime_walk(mime)
+
+    if op == 'attach':
+        _mime_walk(mime,attach=1)
+    
+    if op == 'recips':
+        print_all_recips(mime)
