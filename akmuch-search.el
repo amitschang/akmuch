@@ -49,7 +49,9 @@
       (akmuch-display-search)
       (unless (search-forward-regexp (concat "^" tid) nil t)
 	(forward-line lin))
-      (akmuch-search-next 0))))
+      (akmuch-search-next 0))
+    (if (get-buffer akmuch-summarize-buffer)
+        (akmuch-summary-update))))
 
 (defun akmuch-search (search)
   (interactive "sSearch: ")
@@ -58,7 +60,9 @@
   (setq akmuch-search-history
 	(append akmuch-search-history akmuch-search))
   (akmuch-display-search)
-  (akmuch-next 0))
+  (akmuch-next 0)
+  (if (get-buffer akmuch-summarize-buffer)
+      (akmuch-summary-update)))
 
 (defun akmuch-add-search (search)
   (interactive "sAdd to search: ")

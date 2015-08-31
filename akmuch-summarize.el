@@ -2,36 +2,39 @@
 
 (defun akmuch-summarize ()
   (interactive)
-  (let ((terms akmuch-summary-terms)
-	(sbuff akmuch-search-buffer)
-	psave)
+  (let ((sbuff akmuch-search-buffer))
+    (pop-to-buffer akmuch-summarize-buffer)
+    (akmuch-summary-mode)
+    (akmuch-summary-update)
+    (setq akmuch-search-buffer sbuff)))
+
+(defun akmuch-summary-update ()
+  (with-current-buffer akmuch-summarize-buffer
+    (let ((terms akmuch-summary-terms)
+          (buffer-read-only nil)
+          psave)
     (when (not (listp akmuch-summary-terms))
       (message "no summary terms registered"))
-    (pop-to-buffer akmuch-summarize-buffer)
-    (setq buffer-read-only nil)
     (erase-buffer)
-    (while terms
-      (insert (cdr (car terms)))
-      (insert "\n")
-      (setq terms (cdr terms)))
-    (shell-command-on-region
-     (point-min) (point-max)
-     "notmuch count --batch"
-     (current-buffer) t)
-    (goto-char (point-min))
-    (setq terms akmuch-summary-terms)
-    (while terms
-      (when (> (string-to-number
-	      (buffer-substring (point) (point-at-eol))) 40)
+    (save-excursion
+      (while terms
+        (insert (cdr (car terms)))
+        (insert "\n")
+        (setq terms (cdr terms)))
+      (shell-command-on-region
+       (point-min) (point-max)
+       "notmuch count --batch"
+       (current-buffer) t)
+      (goto-char (point-min))
+      (setq terms akmuch-summary-terms)
+      (while terms
+        (when (> (string-to-number
+                  (buffer-substring (point) (point-at-eol))) 40)
     	  (put-text-property (point) (point-at-eol)
 			     'face 'font-lock-warning-face))
-      (insert (format "%-15s" (car (car terms))))
-      (forward-line 1)
-      (setq terms (cdr terms)))
-    (goto-char (point-min))
-    (akmuch-summary-mode)
-    (setq akmuch-search-buffer sbuff)
-    ))
+        (insert (format "%-15s" (car (car terms))))
+        (forward-line 1)
+        (setq terms (cdr terms)))))))
 
 (defun akmuch-summary-get-terms ()
   (let (index terms i)

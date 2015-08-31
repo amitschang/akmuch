@@ -52,6 +52,8 @@
       (with-current-buffer akmuch-message-buffer
 	(akmuch-message-mode)
 	(akmuch-message-view-file file type)
+        (when linum-mode
+          (linum-update (current-buffer)))
 	(setq akmuch-search-buffer akmuch-search-buffer)
 	(setq akmuch-message-filename file)
 	(setq akmuch-message-mode type)
@@ -120,7 +122,7 @@
     (goto-char (point-min))
     (search-forward-regexp file)
     (goto-char (point-at-bol))
-    (insert " ")))    
+    (insert " ")))
 
 (defun akmuch-message-prep (id)
   ;; get the list of filenames for the message
@@ -185,7 +187,7 @@
       (setq n (line-number-at-pos))
       (setq tot (count-matches "^." (point-min) (point-max))))
     (format "[%d/%d]" n tot)))
-    
+
 (defun akmuch-fill-message ()
   (interactive)
   (let (fillstart fillpre fillend)
@@ -252,10 +254,13 @@
 	file)
     (unless command
       (setq command (read-shell-command "[async] command: ")))
-    (setq file (with-current-buffer akmuch-message-buffer
-		 akmuch-message-filename))
+    (setq file
+          (replace-regexp-in-string
+           "\n" " "
+           (with-current-buffer akmuch-message-buffer
+             akmuch-message-filename)))
     (setq filename (make-temp-file "/tmp/akmuch_attachment_"))
-    (shell-command 
+    (shell-command
      (format "%s part %d %s > %s"
 	     akmuch-notmuch-helper part file filename))
     (start-process-shell-command "akmuch-att-command" nil
