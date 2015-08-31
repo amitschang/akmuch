@@ -148,6 +148,17 @@
     (search-forward-regexp "$")
     (buffer-substring (point-at-bol) (point))))
 
+(defun akmuch-message-latest (id)
+  (with-temp-buffer
+    (call-process "notmuch" nil (current-buffer) nil
+		  "search" "--output=files"
+		  "--sort=oldest-first"
+		  "--limit=1"
+		  id)
+    (goto-char (point-min))
+    (search-forward-regexp "$")
+    (buffer-substring (point-at-bol) (point))))
+
 (defun akmuch-message-view-file (file &optional type)
   (let ((buffer-read-only nil)
 	(helper-command "view"))
@@ -283,6 +294,7 @@
 
 (defun akmuch-colorize-message ()
   (interactive)
+  (let ((footer nil))
   (save-excursion
     (goto-char (point-min))
     (while (not (looking-at "\n"))
@@ -290,11 +302,16 @@
 			 'face 'font-lock-string-face)
       (forward-line))
     (while (< (point) (point-max))
-      (when (or (looking-at "^>>*\\( \\|$\\)")
-		(looking-at "^On .* wrote:$"))
+      (if footer
 	(put-text-property (point) (point-at-eol)
-			   'face 'font-lock-warning-face))
-      (forward-line))))
+			   'face 'font-lock-constant-face)
+	(when (or (looking-at "^>>*\\( \\|$\\)")
+		  (looking-at "^On .* wrote:$"))
+	  (put-text-property (point) (point-at-eol)
+			     'face 'font-lock-warning-face))
+	(when (looking-at "^-- *$")
+	  (setq footer t)))
+      (forward-line)))))
 
 (defvar akmuch-message-mode-map
       (let ((map (make-sparse-keymap)))

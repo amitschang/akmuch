@@ -4,39 +4,25 @@
 
 (defun akmuch-reply (&optional senderonly)
   (interactive)
-  (let (mid faddr m-strt m-end)
-    (if (eq akmuch-display-type 'search)
-	(setq mid (akmuch-get-latest-message-id))
-      (setq mid akmuch-current-message-id))
-    (when mid
-      (switch-to-buffer (generate-new-buffer "*unsent mail*"))
+  (let (file m-strt m-end)
+    (setq
+     file
+     (if (buffer-live-p (get-buffer akmuch-message-buffer))
+	 (with-current-buffer akmuch-message-buffer
+	   akmuch-message-filename)
+       (akmuch-message-latest (akmuch-get-thread-id))))
+    (when file
+      (switch-to-buffer-other-frame (generate-new-buffer "*unsent mail*"))
       (if senderonly
-	  (call-process "notmuch" nil (current-buffer) nil
-			"reply" "--reply-to=sender" mid)
-	(call-process "notmuch" nil (current-buffer) nil
-		      "reply" mid))
-      (when akmuch-fill-messages
-	(akmuch-fill-message))
+	  (call-process akmuch-notmuch-helper nil (current-buffer) nil
+			"reply" "--reply-to=sender" file)
+	(call-process akmuch-notmuch-helper nil (current-buffer) nil
+		      "reply" file))
       (goto-char (point-min))
       (search-forward-regexp "\n\n")
       (forward-line -1)
       (insert "--text follows this line--\n\n")
       (goto-char (point-min))
-      ;; make to and cc fields a little prettier
-      (save-excursion
-	(search-forward-regexp "^To:")
-	(setq m-end
-	      (save-excursion
-		(search-forward-regexp "^[^ \t]") (point)))
-	(while (re-search-forward "\t" m-end t)
-	  (replace-match " ")))
-      (save-excursion
-	(when (search-forward-regexp "^Cc:" nil t)
-	(setq m-end
-	      (save-excursion
-		(search-forward-regexp "^[^ \t]") (point)))
-	(while (re-search-forward "\t" m-end t)
-	  (replace-match " "))))
       ;; hide the in-reply-to and references fields
       (save-excursion
 	(search-forward-regexp "^In-Reply-To:")
