@@ -42,12 +42,19 @@
 
 (defun akmuch-forward ()
   (interactive)
-  (with-temp-buffer
+  (let (file)
+    (setq
+     file
+     (if (buffer-live-p (get-buffer akmuch-message-buffer))
+         (with-current-buffer akmuch-message-buffer
+           akmuch-message-filename)
+       (akmuch-message-latest (akmuch-get-thread-id))))
+    (with-temp-buffer
     (let ((coding-system-for-read 'no-conversion)
 	  (coding-system-for-write 'no-conversion)
-	  buff subject start (done nil))
-      (call-process "notmuch" nil (current-buffer) nil
-		    "show" "--format=raw" akmuch-current-message-id)
+	  buff subject start (done nil)
+          )
+      (insert-file-contents file)
       (goto-char (point-min))
       (while (not done)
       	(if (or (looking-at (concat "^\\(From\\|To\\|Date\\|Subject\\|"

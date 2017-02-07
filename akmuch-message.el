@@ -279,12 +279,13 @@
 
 (defun akmuch-view-original ()
   (interactive)
-  (with-current-buffer (get-buffer-create "*Akmuch Original*")
+  (let (file)
+    (setq file (with-current-buffer akmuch-message-buffer
+                 akmuch-message-filename))
+    (switch-to-buffer-other-frame (get-buffer-create "*Akmuch Original*"))
     (erase-buffer)
-    (call-process "notmuch" nil (current-buffer) nil
-		  "show" "--format=raw" akmuch-current-message-id))
-  (pop-to-buffer "*Akmuch Original*")
-  (goto-char (point-min)))
+    (insert-file-contents file)
+    (goto-char (point-min))))
 
 (defun akmuch-view-message ()
   (interactive)
