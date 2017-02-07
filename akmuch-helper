@@ -27,17 +27,29 @@ def _mime_walk (mail,depth=0,attach=0,silent=False):
 
 def decode_one_header (header):
     decoded = []
-    for i in email.header.decode_header(header):
-        h = i[0]
-        if i[1] != None:
-            h = h.decode(i[1],'ignore').encode('utf-8','ignore')
-        decoded.append(h)
-    return " ".join(decoded)
+    try:
+        for i in email.header.decode_header(header):
+            h = i[0]
+            if i[1] != None:
+                h = h.decode(i[1],'ignore').encode('utf-8','ignore')
+            decoded.append(h)
+        return " ".join(decoded)
+    except:
+        try:
+            h = header.encode('utf-8','ignore')
+        except:
+            h = ''
+        return h
 
 def print_headers (mail):
     print decode_one_header(mail.get("Subject")).replace("\n"," ")
     print "From:",decode_one_header(mail.get("From"))
-    print "To:",", ".join(get_all_recips(mail))
+    recips = get_all_recips(mail)
+    if len(recips) > 3:
+        print "To:  ",", ".join(recips[0:2]),"+%d others" %(len(recips)-2)
+    else:
+        print "To:  ",", ".join(recips)
+    print "Date:",decode_one_header(mail.get("Date"))
     print ""
 
 def get_all_recips (mail):
@@ -55,32 +67,42 @@ def print_all_recips (mail):
             print decode_one_header(r)
 
 def get_text (mail):
-    text = None
+    text = ''
     for part in mail.walk():
         if part.get_content_type() == 'text/plain':
             cset = part.get_content_charset()
-            text = part.get_payload(decode=1)
+            _text = part.get_payload(decode=1)
             if cset:
-                text = text.decode(cset,'ignore').encode('utf-8','ignore')
+                try:
+                    text += _text.decode(cset,'ignore').encode('utf-8','ignore')
+                except:
+                    text += _text
+            else:
+                text += _text
+            text += '\n'
     #print some html if no suitable text parts
     if not text:
         for part in mail.walk():
             if part.get_content_type() == 'text/html':
                 text = part.get_payload(decode=1)
-                pipe = subprocess.Popen(
-                    ['w3m','-T','text/html','-dump'],
-                    stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-                (pout,perr) = pipe.communicate(input=text)
-                text = pout
+                try:
+                    pipe = subprocess.Popen(
+                        ['w3m','-T','text/html','-dump'],
+                        stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+                    (pout,perr) = pipe.communicate(input=text)
+                    text = pout
+                except:
+                    text = ' *** could not show html part (no w3m), and no text parts ***\n\n'
     return text
 
-def make_reply (mail):
+def make_reply (mail, senderonly=False):
     subj = decode_one_header(mime.get("Subject"))
     if not re.match("^ *[Rr][Ee]:",subj):
         subj = "Re: " + subj
     print "Subject: " + subj
     print "To: " + decode_one_header(mime.get("From"))
-    print "Cc: " + ", ".join(get_all_recips(mail))
+    if not senderonly:
+        print "Cc: " + ", ".join(get_all_recips(mail))
     print "In-Reply-To: " + mime.get("Message-id")
     refs = mime.get("References")
     if refs:
@@ -89,7 +111,10 @@ def make_reply (mail):
         refs = mime.get("Message-id")
     print "References: " + refs
     print ""
-    print re.sub("^([^>])","> \\1",re.sub("^>",">>",get_text(mail),flags=re.M),flags=re.M)
+    text = re.sub('\r\n','\n',get_text(mail))
+    text = re.sub("^>",">>",text,flags=re.M)
+    text = re.sub("^([^>])","> \\1",text,flags=re.M)
+    print text
 
 op = sys.argv[1]
 mime_index = 0
@@ -113,7 +138,11 @@ for msg in sys.argv[file_ind:]:
         header_print = 0
 
     if op == 'view':
-        print get_text(mime)
+        print re.sub('\r\n','\n',get_text(mime))
+
+    if op == 'views':
+        for part in mime.walk():
+            print part.get_content_charset(),part.get_content_type()
 
     if op == 'part':
         _mime_walk(mime,silent=True)
@@ -130,3 +159,6 @@ for msg in sys.argv[file_ind:]:
 
     if op == 'reply':
         make_reply(mime)
+
+    if op == 'reply-sender':
+        make_reply(mime,True)
