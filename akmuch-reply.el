@@ -15,12 +15,15 @@
       (switch-to-buffer-other-frame (generate-new-buffer "*unsent mail*"))
       (if senderonly
 	  (call-process akmuch-notmuch-helper nil (current-buffer) nil
-			"reply" "--reply-to=sender" file)
+			"reply-sender" file)
 	(call-process akmuch-notmuch-helper nil (current-buffer) nil
 		      "reply" file))
       (goto-char (point-min))
       (search-forward-regexp "\n\n")
       (forward-line -1)
+      (when (not (search-backward-regexp "^From: " nil t))
+        (goto-char (point-at-bol))
+        (insert (format "From: %s\n" user-mail-address)))
       (insert "--text follows this line--\n\n")
       (goto-char (point-min))
       ;; hide the in-reply-to and references fields
@@ -72,7 +75,7 @@
 	(when (looking-at "^$")
 	  (setq done t)))
       (setq buff (current-buffer))
-      (message-mail)
+      (message-mail-other-frame)
       (message-forward-make-body buff nil)
       (search-forward-regexp "^<#mml")
       (when
@@ -85,6 +88,6 @@
       (insert (concat "Fwd: " subject))
       (goto-char (point-min))
       (search-forward-regexp "^To: ")
-      (set-buffer-modified-p nil))))
+      (set-buffer-modified-p nil)))))
 
 (provide 'akmuch-reply)
